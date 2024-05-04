@@ -95,6 +95,10 @@ async def find_intersections(segment: Segment):
     finally:
         await conn.close()
 
+@app.get("/")
+async def main():
+    return {"message": "Rectangles Demo"}
+
 
 
 
