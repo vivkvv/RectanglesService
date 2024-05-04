@@ -1,5 +1,4 @@
 asyncpg==0.29.0
 fastapi==0.111.0
 pydantic==2.7.1
-gunicorn==22.0.0
-
+Shapely==2.0.4

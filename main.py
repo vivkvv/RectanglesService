@@ -1,7 +1,9 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncpg
 from typing import List
+from shapely.geometry import LineString, Polygon, box
 
 class Segment(BaseModel):
     x1: float
@@ -10,28 +12,46 @@ class Segment(BaseModel):
     y2: float
 
 class Rectangle(BaseModel):
-    id: int
-    center_x: float
-    center_y: float
+    rectangleid: int
+    centerx: float
+    centery: float
     width: float
     height: float
     rotation: float
-    pAx: float
-    pAy: float
-    pBx: float
-    pBy: float
-    pCx: float
-    pCy: float
-    pDx: float
-    pDy: float
-    min_x: float
-    max_x: float
-    min_y: float
-    max_y: float
+    pax: float
+    pay: float
+    pbx: float
+    pby: float
+    pcx: float
+    pcy: float
+    pdx: float
+    pdy: float
+    minx: float
+    maxx: float
+    miny: float
+    maxy: float
 
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def get_rectangle_edges(row):
+    return [
+        LineString([(row['pax'], row['pay']), (row['pbx'], row['pby'])]),
+        LineString([(row['pbx'], row['pby']), (row['pcx'], row['pcy'])]),
+        LineString([(row['pcx'], row['pcy']), (row['pdx'], row['pdy'])]),
+        LineString([(row['pdx'], row['pdy']), (row['pax'], row['pay'])])
+    ]
+
+# in real app those parameters must lay in system variables
 async def get_db_connection():
     return await asyncpg.connect(
         user='sfrfivyh',
@@ -41,18 +61,11 @@ async def get_db_connection():
         ssl='require'
     )
 
-@app.get("/test_db")
-async def test_db():
-    try:
-        conn = await get_db_connection()
-        rows = await conn.fetch("SELECT * FROM rectangles LIMIT 10")
-        await conn.close()
-        return {"data": rows}
-    except Exception as e:
-        return HTTPException(status_code=500, detail=str(e))
-
 @app.post("/intersections", response_model=List[Rectangle])
 async def find_intersections(segment: Segment):
+
+    print(segment)
+
     conn = await get_db_connection()
 
     try:
@@ -60,17 +73,25 @@ async def find_intersections(segment: Segment):
         segment_min_x = min(segment.x1, segment.x2)
         segment_max_y = max(segment.y1, segment.y2)
         segment_min_y = min(segment.y1, segment.y2)
-        query = f"""
+        query = """
         SELECT * FROM rectangles
-        WHERE min_x <= {segment_max_x} AND max_x >= {segment_min_x}
-          AND min_y <= {segment_max_y} AND max_y >= {segment_min_y}
+        WHERE minx <= $1 AND maxx >= $2
+        AND miny <= $3 AND maxy >= $4
         """
-        rows = await conn.fetch(query)
-        rectangles = [Rectangle(**dict(row)) for row in rows]
-        return rectangles
+        rows = await conn.fetch(query, segment_max_x, segment_min_x, segment_max_y, segment_min_y)
+
+        segment_line = LineString([(segment.x1, segment.y1), (segment.x2, segment.y2)])
+
+        filtered_rectangles = []
+        for row in rows:
+              edges = get_rectangle_edges(row)
+              if any(segment_line.intersects(edge) for edge in edges):
+                  filtered_rectangles.append(Rectangle(**dict(row)))
+
+        return filtered_rectangles
     except Exception as exc:
         await conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
         await conn.close()
 
