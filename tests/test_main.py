@@ -3,7 +3,6 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-# Добавьте корневую директорию в путь
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from main import app
