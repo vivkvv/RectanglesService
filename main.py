@@ -97,7 +97,7 @@ async def find_intersections(segment: Segment):
 
 @app.get("/")
 async def main():
-    return {"message": "Rectangles Demo"}
+    return {"message2": "Rectangles Demo"}
 
 
 
