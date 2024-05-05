@@ -5,11 +5,14 @@ import asyncpg
 from typing import List
 from shapely.geometry import LineString, Polygon, box
 
+
+class Point(BaseModel):
+    x: float
+    y: float
+
 class Segment(BaseModel):
-    x1: float
-    y1: float
-    x2: float
-    y2: float
+    start: Point
+    end: Point
 
 class Rectangle(BaseModel):
     rectangleid: int
@@ -63,16 +66,17 @@ async def get_db_connection():
 
 @app.post("/intersections", response_model=List[Rectangle])
 async def find_intersections(segment: Segment):
-
-    print(segment)
-
     conn = await get_db_connection()
 
     try:
-        segment_max_x = max(segment.x1, segment.x2)
-        segment_min_x = min(segment.x1, segment.x2)
-        segment_max_y = max(segment.y1, segment.y2)
-        segment_min_y = min(segment.y1, segment.y2)
+        x1, y1 = segment.start.x, segment.start.y
+        x2, y2 = segment.end.x, segment.end.y
+
+        segment_max_x = max(x1, x2)
+        segment_min_x = min(x1, x2)
+        segment_max_y = max(y1, y2)
+        segment_min_y = min(y1, y2)
+
         query = """
         SELECT * FROM rectangles
         WHERE minx <= $1 AND maxx >= $2
@@ -80,24 +84,23 @@ async def find_intersections(segment: Segment):
         """
         rows = await conn.fetch(query, segment_max_x, segment_min_x, segment_max_y, segment_min_y)
 
-        segment_line = LineString([(segment.x1, segment.y1), (segment.x2, segment.y2)])
+        segment_line = LineString([(x1, y1), (x2, y2)])
 
         filtered_rectangles = []
         for row in rows:
-              edges = get_rectangle_edges(row)
-              if any(segment_line.intersects(edge) for edge in edges):
-                  filtered_rectangles.append(Rectangle(**dict(row)))
+            edges = get_rectangle_edges(row)
+            if any(segment_line.intersects(edge) for edge in edges):
+                filtered_rectangles.append(Rectangle(**dict(row)))
 
         return filtered_rectangles
     except Exception as exc:
-        await conn.close()
         raise HTTPException(status_code=500, detail=str(exc))
     finally:
         await conn.close()
 
 @app.get("/")
 async def main():
-    return {"message2": "Rectangles Demo"}
+    return {"message": "Rectangles Demo"}
 
 
 
